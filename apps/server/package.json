@@ -1,0 +1,31 @@
+{
+  "name": "@voice-ai-tester/server",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@voice-ai-tester/shared": "workspace:*",
+    "@freesoft/adapters": "workspace:*",
+    "@freesoft/voice-pipeline": "workspace:*",
+    "express": "^4.21.2",
+    "ws": "^8.18.0",
+    "@deepgram/sdk": "^3.11.0",
+    "openai": "^4.77.3",
+    "dotenv": "^16.4.7",
+    "uuid": "^11.0.3"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/ws": "^8.5.13",
+    "@types/uuid": "^10.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

@@ -1,0 +1,36 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build outputs
+dist
+out
+.next
+build
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Logs
+*.log
+logs
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Turbo
+.turbo
+
+# Testing
+coverage
+.nyc_output
