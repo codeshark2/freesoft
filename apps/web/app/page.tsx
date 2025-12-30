@@ -188,15 +188,13 @@ export default function Home() {
         await new Promise(resolve => setTimeout(resolve, 500));
 
         await audioCapture.startCapture((audioData) => {
-          if (ws.isConnected) {
-            ws.send({
-              type: 'audio_chunk',
-              payload: {
-                audio: Buffer.from(audioData).toString('base64'),
-              },
-              timestamp: Date.now(),
-            });
-          }
+          ws.send({
+            type: 'audio_chunk',
+            payload: {
+              audio: Buffer.from(audioData).toString('base64'),
+            },
+            timestamp: Date.now(),
+          });
         });
       } catch (error: any) {
         console.error('Session start error:', error);

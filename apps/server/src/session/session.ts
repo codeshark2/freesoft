@@ -1,19 +1,16 @@
 import { EventEmitter } from 'events';
 import WebSocket from 'ws';
 import { v4 as uuidv4 } from 'uuid';
+import { createClient, LiveTranscriptionEvents } from '@deepgram/sdk';
+import OpenAI from 'openai';
 import {
   ClientMessage,
   ServerMessage,
   StartSessionMessage,
+  AudioChunkMessage,
 } from '@voice-ai-tester/shared';
 import { EventLogger } from '../events/logger';
 import { MetricsCalculator } from '../metrics/calculator';
-import {
-  VoicePipelineAdapter,
-  createASRProvider,
-  createLLMProvider,
-  createTTSProvider,
-} from '@freesoft/voice-pipeline';
 
 const MAX_SESSION_DURATION = 60 * 1000; // 60 seconds
 
@@ -24,17 +21,23 @@ export class Session extends EventEmitter {
   private id: string;
   private ws: WebSocket;
   private eventLogger: EventLogger;
-  private pipeline: VoicePipelineAdapter | null = null;
+  private deepgramClient: any;
+  private deepgramLive: any;
+  private openaiClient!: OpenAI;
+  private elevenLabsWs: WebSocket | null = null;
   private startTime: number = 0;
   private sessionTimer: NodeJS.Timeout | null = null;
   private isActive = false;
+  private apiKeys: any;
+  private systemPrompt: string = '';
+  private currentTranscript: string = '';
+  private config: any = {};
 
   constructor(ws: WebSocket) {
     super();
     this.id = uuidv4();
     this.ws = ws;
     this.eventLogger = new EventLogger(this.id);
-
     this.setupWebSocketListeners();
   }
 
@@ -44,6 +47,7 @@ export class Session extends EventEmitter {
         const message: ClientMessage = JSON.parse(data.toString());
         await this.handleClientMessage(message);
       } catch (error) {
+        console.error(`[Session ${this.id}] Message parse error:`, error);
         this.sendError('Invalid message format');
       }
     });
@@ -53,7 +57,7 @@ export class Session extends EventEmitter {
     });
 
     this.ws.on('error', (error) => {
-      console.error('WebSocket error:', error);
+      console.error(`[Session ${this.id}] WebSocket error:`, error);
       this.cleanup('error');
     });
   }
@@ -83,53 +87,79 @@ export class Session extends EventEmitter {
     try {
       this.isActive = true;
       this.startTime = Date.now();
+      this.apiKeys = message.payload.apiKeys;
+      this.systemPrompt = message.payload.systemPrompt;
+      this.config = message.payload.config || {};
 
       // Log session start
       this.eventLogger.log({
         type: 'session_start',
         timestamp: this.startTime,
-        data: {
-          systemPrompt: message.payload.systemPrompt,
-          config: {
-            llmModel: message.payload.config?.llmModel || 'gpt-4o',
-            ttsVoice: message.payload.config?.ttsVoice || '21m00Tcm4TlvDq8ikWAM',
-          },
-        },
+        data: {},
       });
 
-      // Create provider adapters
-      const asr = createASRProvider('deepgram', {
-        apiKey: message.payload.apiKeys.deepgram,
+      // Initialize Deepgram
+      this.deepgramClient = createClient(this.apiKeys.deepgram);
+      this.deepgramLive = this.deepgramClient.listen.live({
+        model: 'nova-2',
+        language: 'en-US',
+        encoding: 'linear16',
+        sample_rate: 16000,
+        channels: 1,
+        smart_format: true,
+        interim_results: true,
+        utterance_end_ms: 1000,
+        vad_events: true,
       });
 
-      const llm = createLLMProvider('openai', {
-        apiKey: message.payload.apiKeys.openai,
-        model: message.payload.config?.llmModel || 'gpt-4o',
+      // Set up Deepgram event listeners
+      this.deepgramLive.on(LiveTranscriptionEvents.Open, () => {
+        // Connection established
       });
 
-      // Determine TTS provider (default to openai-tts)
-      const ttsProvider = message.payload.config?.ttsProvider || 'openai-tts';
+      this.deepgramLive.on(LiveTranscriptionEvents.Transcript, (data: any) => {
+        const transcript = data.channel?.alternatives?.[0]?.transcript;
+        if (transcript) {
+          const isFinal = data.is_final;
+          const timestamp = Date.now();
 
-      const tts = createTTSProvider(ttsProvider, {
-        apiKey: ttsProvider === 'openai-tts'
-          ? message.payload.apiKeys.openai
-          : message.payload.apiKeys.elevenlabs!,
-        voiceId: message.payload.config?.ttsVoice || (ttsProvider === 'openai-tts' ? 'alloy' : '21m00Tcm4TlvDq8ikWAM'),
+          // Log event for metrics
+          if (isFinal) {
+            this.eventLogger.log({
+              type: 'asr_final',
+              timestamp,
+              data: {
+                transcript,
+                speechEndTime: timestamp,
+              },
+            });
+          }
+
+          this.send({
+            type: isFinal ? 'transcript_final' : 'transcript_partial',
+            payload: { text: transcript, isFinal },
+            timestamp,
+          });
+
+          if (isFinal) {
+            this.currentTranscript = transcript;
+            this.handleLLMRequest(transcript);
+          }
+        }
       });
 
-      // Create voice pipeline
-      this.pipeline = new VoicePipelineAdapter(asr, llm, tts, {
-        systemPrompt: message.payload.systemPrompt,
+      this.deepgramLive.on(LiveTranscriptionEvents.Error, (error: any) => {
+        console.error('Deepgram error:', error);
+        this.sendError('Speech recognition error');
       });
 
-      this.setupPipelineListeners();
+      // Initialize OpenAI
+      this.openaiClient = new OpenAI({
+        apiKey: this.apiKeys.openai,
+      });
 
-      await this.pipeline.connect();
-
-      await new Promise(resolve => setTimeout(resolve, 300));
-
-      // Send session started confirmation
-      this.sendMessage({
+      // Send session started
+      this.send({
         type: 'session_started',
         payload: {
           sessionId: this.id,
@@ -142,103 +172,251 @@ export class Session extends EventEmitter {
       this.sessionTimer = setTimeout(() => {
         this.cleanup('timeout');
       }, MAX_SESSION_DURATION);
+
     } catch (error: any) {
       console.error('Session start error:', error);
-      let errorMessage = 'Failed to start session';
-
-      // Provide more specific error messages
-      if (error.message?.includes('401') || error.message?.includes('unauthorized')) {
-        errorMessage = 'Authentication failed. Please check your API keys.';
-      } else if (error.message?.includes('Deepgram')) {
-        errorMessage = `Deepgram error: ${error.message}. Please verify your Deepgram API key.`;
-      } else if (error.message?.includes('timeout')) {
-        errorMessage = 'Connection timeout. Please check your network and API keys.';
-      } else {
-        errorMessage = `Failed to start session: ${error.message}`;
-      }
-
-      this.sendError(errorMessage);
+      this.sendError(error.message || 'Failed to start session');
       this.cleanup('error');
     }
   }
 
-  private setupPipelineListeners(): void {
-    if (!this.pipeline) return;
-
-    this.pipeline.on('transcript_partial', (text: string) => {
-      this.sendMessage({
-        type: 'transcript_partial',
-        payload: { text, isFinal: false },
-        timestamp: Date.now(),
-      });
-    });
-
-    this.pipeline.on('transcript_final', (text: string) => {
-      this.sendMessage({
-        type: 'transcript_final',
-        payload: { text, isFinal: true },
-        timestamp: Date.now(),
-      });
-    });
-
-    this.pipeline.on('llm_token', ({ token, isComplete }) => {
-      this.sendMessage({
-        type: 'llm_token',
-        payload: { token, isComplete },
-        timestamp: Date.now(),
-      });
-    });
-
-    this.pipeline.on('tts_audio', (audioBuffer: Buffer) => {
-      this.sendMessage({
-        type: 'tts_audio',
-        payload: {
-          audio: audioBuffer.toString('base64'),
-        },
-        timestamp: Date.now(),
-      });
-    });
-
-    this.pipeline.on('error', ({ provider, error }) => {
-      console.error(`${provider} error:`, error.message);
-
-      // Send user-friendly error message
-      let userMessage = `${provider} error: ${error.message}`;
-
-      // Special handling for quota errors
-      if (error.message.includes('quota')) {
-        userMessage = `⚠️ ElevenLabs quota exceeded. The session will continue but without audio playback. Please upgrade your ElevenLabs plan or use a new API key.`;
-      }
-
-      this.sendError(userMessage);
-    });
-  }
-
   private async handleAudioChunk(message: AudioChunkMessage): Promise<void> {
-    if (!this.isActive || !this.pipeline) {
+    if (!this.isActive || !this.deepgramLive) {
       return;
     }
 
     try {
-      const audioBuffer = typeof message.payload.audio === 'string'
-        ? Buffer.from(message.payload.audio, 'base64')
-        : Buffer.from(message.payload.audio);
+      const timestamp = Date.now();
 
-      this.pipeline.sendAudio(audioBuffer);
-    } catch (error: any) {
-      this.sendError(`Audio processing error: ${error.message}`);
+      // Log event for metrics
+      this.eventLogger.log({
+        type: 'audio_chunk_received',
+        timestamp,
+        data: {},
+      });
+
+      // Decode base64 audio and send to Deepgram
+      const audioBuffer = Buffer.from(message.payload.audio.toString(), 'base64');
+      this.deepgramLive.send(audioBuffer);
+    } catch (error) {
+      console.error('[Audio] Chunk processing error:', error);
     }
   }
 
-  private async cleanup(reason: 'user_requested' | 'timeout' | 'error'): Promise<void> {
-    if (!this.isActive) return;
+  private async handleLLMRequest(userMessage: string): Promise<void> {
+    try {
+      const llmStartTime = Date.now();
 
+      // Log LLM start
+      this.eventLogger.log({
+        type: 'llm_start',
+        timestamp: llmStartTime,
+        data: { userMessage },
+      });
+
+      const stream = await this.openaiClient.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: this.systemPrompt },
+          { role: 'user', content: userMessage },
+        ],
+        stream: true,
+      });
+
+      let fullResponse = '';
+      let isFirstToken = true;
+      let tokensOutput = 0;
+
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content || '';
+        if (content) {
+          const tokenTimestamp = Date.now();
+          fullResponse += content;
+          tokensOutput++;
+
+          // Log first token
+          if (isFirstToken) {
+            this.eventLogger.log({
+              type: 'llm_token',
+              timestamp: tokenTimestamp,
+              data: { isFirst: true },
+            });
+            isFirstToken = false;
+          }
+
+          this.send({
+            type: 'llm_token',
+            payload: { token: content, isComplete: false },
+            timestamp: tokenTimestamp,
+          });
+        }
+      }
+
+      const llmCompleteTime = Date.now();
+
+      // Log LLM completion
+      this.eventLogger.log({
+        type: 'llm_complete',
+        timestamp: llmCompleteTime,
+        data: {
+          tokensInput: userMessage.split(/\s+/).length, // Rough estimate
+          tokensOutput,
+          response: fullResponse,
+        },
+      });
+
+      // Send completion
+      this.send({
+        type: 'llm_token',
+        payload: { token: '', isComplete: true },
+        timestamp: llmCompleteTime,
+      });
+
+      // Generate TTS for the response
+      await this.handleTTSRequest(fullResponse);
+
+    } catch (error: any) {
+      console.error('LLM error:', error);
+      this.sendError('AI response error');
+    }
+  }
+
+  private async handleTTSRequest(text: string): Promise<void> {
+    try {
+      const ttsStartTime = Date.now();
+
+      // Log TTS start
+      this.eventLogger.log({
+        type: 'tts_start',
+        timestamp: ttsStartTime,
+        data: { characterCount: text.length },
+      });
+
+      const ttsProvider = this.config.ttsProvider || 'elevenlabs';
+
+      if (ttsProvider === 'elevenlabs') {
+        await this.handleElevenLabsTTS(text);
+      } else {
+        await this.handleOpenAITTS(text);
+      }
+    } catch (error: any) {
+      console.error('TTS error:', error);
+      this.sendError('Voice synthesis error');
+    }
+  }
+
+  private async handleElevenLabsTTS(text: string): Promise<void> {
+    const voiceId = this.config.ttsVoice || '21m00Tcm4TlvDq8ikWAM';
+    const wsUrl = `wss://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream-input?model_id=eleven_turbo_v2`;
+    let isFirstChunk = true;
+
+    this.elevenLabsWs = new WebSocket(wsUrl, {
+      headers: {
+        'xi-api-key': this.apiKeys.elevenlabs,
+      },
+    });
+
+    this.elevenLabsWs.on('open', () => {
+      this.elevenLabsWs?.send(JSON.stringify({
+        text: text,
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.75,
+        },
+      }));
+    });
+
+    this.elevenLabsWs.on('message', (data: any) => {
+      const timestamp = Date.now();
+
+      // Log first audio chunk for metrics
+      if (isFirstChunk) {
+        this.eventLogger.log({
+          type: 'tts_audio_chunk',
+          timestamp,
+          data: { isFirst: true },
+        });
+        isFirstChunk = false;
+      }
+
+      try {
+        const response = JSON.parse(data.toString());
+        if (response.audio) {
+          this.send({
+            type: 'tts_audio',
+            payload: { audio: response.audio },
+            timestamp,
+          });
+        }
+      } catch (error) {
+        // Binary audio data
+        this.send({
+          type: 'tts_audio',
+          payload: { audio: data.toString('base64') },
+          timestamp,
+        });
+      }
+    });
+
+    this.elevenLabsWs.on('error', (error) => {
+      console.error('ElevenLabs WS error:', error);
+    });
+  }
+
+  private async handleOpenAITTS(text: string): Promise<void> {
+    const response = await this.openaiClient.audio.speech.create({
+      model: 'tts-1',
+      voice: 'alloy',
+      input: text,
+    });
+
+    const timestamp = Date.now();
+
+    // Log TTS audio chunk for metrics
+    this.eventLogger.log({
+      type: 'tts_audio_chunk',
+      timestamp,
+      data: { isFirst: true },
+    });
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    this.send({
+      type: 'tts_audio',
+      payload: { audio: buffer.toString('base64') },
+      timestamp,
+    });
+  }
+
+  private send(message: ServerMessage): void {
+    if (this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(message));
+    }
+  }
+
+  private sendError(message: string): void {
+    this.send({
+      type: 'error',
+      payload: { message },
+      timestamp: Date.now(),
+    });
+  }
+
+  private cleanup(reason: string): void {
     this.isActive = false;
 
-    // Clear session timer
     if (this.sessionTimer) {
       clearTimeout(this.sessionTimer);
       this.sessionTimer = null;
+    }
+
+    if (this.deepgramLive) {
+      this.deepgramLive.finish();
+      this.deepgramLive = null;
+    }
+
+    if (this.elevenLabsWs) {
+      this.elevenLabsWs.close();
+      this.elevenLabsWs = null;
     }
 
     // Log session end
@@ -247,56 +425,30 @@ export class Session extends EventEmitter {
       type: 'session_end',
       timestamp: endTime,
       data: {
-        reason,
         duration: endTime - this.startTime,
       },
     });
 
-    // Clean up pipeline
-    if (this.pipeline) {
-      await this.pipeline.disconnect();
-      this.pipeline = null;
-    }
-
-    // Calculate metrics
-    const metrics = MetricsCalculator.calculate(this.eventLogger.getEventLog());
-
-    // Send session ended message
-    this.sendMessage({
+    // Calculate and send metrics
+    const eventLog = this.eventLogger.getEventLog();
+    const metrics = MetricsCalculator.calculate(eventLog);
+    this.send({
       type: 'session_ended',
       payload: {
-        reason,
         metrics,
+        reason: reason as 'user_requested' | 'timeout' | 'error'
       },
-      timestamp: endTime,
-    });
-
-    // Close WebSocket
-    if (this.ws.readyState === WebSocket.OPEN) {
-      this.ws.close();
-    }
-
-    this.emit('ended');
-  }
-
-  private sendMessage(message: ServerMessage): void {
-    if (this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(message));
-    }
-  }
-
-  private sendError(message: string): void {
-    this.sendMessage({
-      type: 'error',
-      payload: { message },
       timestamp: Date.now(),
     });
+
+    this.emit('cleanup');
   }
 
   getId(): string {
     return this.id;
   }
-}
 
-// Fix type import
-import { AudioChunkMessage } from '@voice-ai-tester/shared';
+  isSessionActive(): boolean {
+    return this.isActive;
+  }
+}

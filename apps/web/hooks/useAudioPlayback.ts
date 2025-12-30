@@ -63,27 +63,8 @@ export function useAudioPlayback() {
           bytes[i] = binaryString.charCodeAt(i);
         }
 
-        // Convert PCM data to AudioBuffer
-        // ElevenLabs PCM format: 16kHz, 16-bit signed int, mono
-        const sampleRate = 16000;
-        const numberOfChannels = 1;
-
-        // Convert bytes to Int16Array (16-bit samples)
-        const samples = new Int16Array(bytes.buffer);
-        const numberOfSamples = samples.length;
-
-        // Create AudioBuffer
-        const audioBuffer = context.createBuffer(
-          numberOfChannels,
-          numberOfSamples,
-          sampleRate
-        );
-
-        // Get channel data and convert Int16 to Float32 (range -1.0 to 1.0)
-        const channelData = audioBuffer.getChannelData(0);
-        for (let i = 0; i < numberOfSamples; i++) {
-          channelData[i] = samples[i] / 32768.0; // Convert to float -1.0 to 1.0
-        }
+        // Use browser's built-in audio decoder to handle any format (MP3, PCM, etc.)
+        const audioBuffer = await context.decodeAudioData(bytes.buffer);
 
         // Add to queue
         audioQueueRef.current.push(audioBuffer);
@@ -93,7 +74,7 @@ export function useAudioPlayback() {
           playQueue();
         }
       } catch (err) {
-        // Silently fail
+        console.error('[Audio Playback] Failed to decode audio:', err);
       }
     },
     [initializeContext, playQueue]

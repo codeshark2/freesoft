@@ -32,9 +32,16 @@ export interface CostMetrics {
   total: number;
 }
 
+export interface Exchange {
+  transcript: string;
+  response: string;
+  latency: number; // ms from transcript to first TTS audio
+  timestamp: number;
+}
+
 export interface SessionMetrics {
   latencies: LatencyMetrics;
-  costs: CostMetrics;
+  exchanges: Exchange[];
   usage: UsageMetrics;
 }
 

@@ -50,8 +50,13 @@ export function useWebSocket() {
         wsUrl = process.env.NEXT_PUBLIC_WS_URL;
       } else {
         // Use relative WebSocket URL (same host that served the page) unless overridden by env var
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        wsUrl = process.env.NEXT_PUBLIC_WS_URL || `${protocol}//${window.location.host}`;
+        if (typeof window !== 'undefined') {
+          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          wsUrl = `${protocol}//${window.location.host}`;
+        } else {
+          // Fallback for SSR/build time
+          wsUrl = 'ws://localhost:8080';
+        }
       }
 
       const ws = new WebSocket(wsUrl);

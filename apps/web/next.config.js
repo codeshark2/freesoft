@@ -5,7 +5,8 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  // Disable API routes in static export
+  reactStrictMode: true,
+  // Disable automatic static optimization to prevent build-time rendering issues
   trailingSlash: true,
 };
 

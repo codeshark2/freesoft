@@ -20,12 +20,6 @@ importers:
       '@deepgram/sdk':
         specifier: ^3.11.0
         version: 3.13.0
-      '@freesoft/adapters':
-        specifier: workspace:*
-        version: link:../../packages/adapters
-      '@freesoft/voice-pipeline':
-        specifier: workspace:*
-        version: link:../../packages/voice-pipeline
       '@voice-ai-tester/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -119,43 +113,8 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
-  packages/adapters:
-    dependencies:
-      '@deepgram/sdk':
-        specifier: ^3.10.0
-        version: 3.13.0
-      openai:
-        specifier: ^4.73.0
-        version: 4.104.0(ws@8.18.3)
-      ws:
-        specifier: ^8.18.0
-        version: 8.18.3
-    devDependencies:
-      '@types/node':
-        specifier: ^22.10.2
-        version: 22.19.3
-      '@types/ws':
-        specifier: ^8.5.13
-        version: 8.18.1
-      typescript:
-        specifier: ^5.7.2
-        version: 5.9.3
-
   packages/shared:
     devDependencies:
-      typescript:
-        specifier: ^5.7.2
-        version: 5.9.3
-
-  packages/voice-pipeline:
-    dependencies:
-      '@freesoft/adapters':
-        specifier: workspace:*
-        version: link:../adapters
-    devDependencies:
-      '@types/node':
-        specifier: ^22.10.2
-        version: 22.19.3
       typescript:
         specifier: ^5.7.2
         version: 5.9.3

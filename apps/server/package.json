@@ -12,8 +12,6 @@
   },
   "dependencies": {
     "@voice-ai-tester/shared": "workspace:*",
-    "@freesoft/adapters": "workspace:*",
-    "@freesoft/voice-pipeline": "workspace:*",
     "express": "^4.21.2",
     "ws": "^8.18.0",
     "@deepgram/sdk": "^3.11.0",

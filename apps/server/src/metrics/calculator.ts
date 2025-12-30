@@ -15,12 +15,12 @@ export class MetricsCalculator {
     const events = eventLog.events;
 
     const latencies = this.calculateLatencies(events);
+    const exchanges = this.calculateExchanges(events);
     const usage = this.calculateUsage(events);
-    const costs = calculateCosts(usage);
 
     return {
       latencies,
-      costs,
+      exchanges,
       usage,
     };
   }
@@ -167,5 +167,57 @@ export class MetricsCalculator {
       tokensOutput,
       characters,
     };
+  }
+
+  private static calculateExchanges(events: Event[]): any[] {
+    const exchanges: any[] = [];
+    const asrFinalEvents = events.filter((e) => e.type === 'asr_final');
+    const llmStartEvents = events.filter((e) => e.type === 'llm_start');
+    const llmCompleteEvents = events.filter((e) => e.type === 'llm_complete');
+    const ttsAudioEvents = events.filter(
+      (e) => e.type === 'tts_audio_chunk' && e.data.isFirst
+    );
+
+    // Match ASR transcripts with LLM responses and TTS audio
+    asrFinalEvents.forEach((asrEvent, index) => {
+      if (asrEvent.type === 'asr_final') {
+        const transcript = asrEvent.data.transcript;
+        const asrTimestamp = asrEvent.timestamp;
+
+        // Find corresponding LLM start (should be right after ASR final)
+        const llmStart = llmStartEvents.find(
+          (e) => e.timestamp > asrTimestamp && e.timestamp < asrTimestamp + 5000
+        );
+
+        if (llmStart && llmStart.type === 'llm_start') {
+          // Find corresponding LLM complete
+          const llmComplete = llmCompleteEvents.find(
+            (e) => e.timestamp > llmStart.timestamp && e.timestamp < llmStart.timestamp + 30000
+          );
+
+          // Find corresponding TTS first audio
+          const ttsAudio = ttsAudioEvents.find(
+            (e) => llmComplete && e.timestamp > llmComplete.timestamp && e.timestamp < llmComplete.timestamp + 10000
+          );
+
+          if (ttsAudio && llmComplete && llmComplete.type === 'llm_complete') {
+            // Calculate latency from transcript to first audio
+            const latency = ttsAudio.timestamp - asrTimestamp;
+
+            // Get response text from LLM complete event
+            const response = llmComplete.data.response || '(No response text)';
+
+            exchanges.push({
+              transcript,
+              response,
+              latency,
+              timestamp: asrTimestamp,
+            });
+          }
+        }
+      }
+    });
+
+    return exchanges;
   }
 }

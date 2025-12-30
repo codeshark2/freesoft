@@ -5,7 +5,7 @@ import { useCallback, useRef, useState } from 'react';
 export function useAudioCapture() {
   const [isCapturing, setIsCapturing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -13,7 +13,6 @@ export function useAudioCapture() {
   const startCapture = useCallback(
     async (onAudioData: (data: ArrayBuffer) => void) => {
       try {
-        // Request microphone access
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: {
             channelCount: 1,
@@ -32,43 +31,37 @@ export function useAudioCapture() {
           await audioContext.resume();
         }
 
+        await audioContext.audioWorklet.addModule('/audio-processor.js');
+
         const source = audioContext.createMediaStreamSource(stream);
         sourceRef.current = source;
 
-        const processor = audioContext.createScriptProcessor(4096, 1, 1);
-        processorRef.current = processor;
+        const workletNode = new AudioWorkletNode(audioContext, 'audio-capture-processor');
+        workletNodeRef.current = workletNode;
 
-        processor.onaudioprocess = (e) => {
-          const inputData = e.inputBuffer.getChannelData(0);
-          const pcmData = new Int16Array(inputData.length);
-
-          for (let i = 0; i < inputData.length; i++) {
-            const s = Math.max(-1, Math.min(1, inputData[i]));
-            pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-          }
-
-          onAudioData(pcmData.buffer);
+        workletNode.port.onmessage = (event) => {
+          onAudioData(event.data);
         };
 
-        source.connect(processor);
-        processor.connect(audioContext.destination);
+        source.connect(workletNode);
+        workletNode.connect(audioContext.destination);
 
         setIsCapturing(true);
         setError(null);
       } catch (err: any) {
+        console.error('[Audio] Failed to access microphone:', err);
         setError(err.message || 'Failed to access microphone');
-        console.error('Audio capture error:', err);
+        throw err;
       }
     },
     []
   );
 
   const stopCapture = useCallback(() => {
-    // Disconnect audio processing nodes
-    if (processorRef.current) {
-      processorRef.current.disconnect();
-      processorRef.current.onaudioprocess = null;
-      processorRef.current = null;
+    if (workletNodeRef.current) {
+      workletNodeRef.current.disconnect();
+      workletNodeRef.current.port.onmessage = null;
+      workletNodeRef.current = null;
     }
 
     if (sourceRef.current) {
@@ -76,13 +69,11 @@ export function useAudioCapture() {
       sourceRef.current = null;
     }
 
-    // Stop microphone stream
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
 
-    // Close audio context
     if (audioContextRef.current) {
       audioContextRef.current.close();
       audioContextRef.current = null;

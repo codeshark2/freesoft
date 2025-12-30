@@ -74,54 +74,47 @@ export function MetricsDashboard({ metrics }: MetricsDashboardProps) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Cost Breakdown</CardTitle>
-          <CardDescription>Estimated costs for this session</CardDescription>
+          <CardTitle>Conversation Exchanges</CardTitle>
+          <CardDescription>Transcript and responses with latencies</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <div className="flex justify-between items-center pb-2 border-b">
-              <div>
-                <div className="font-medium">Deepgram (ASR)</div>
-                <div className="text-sm text-muted-foreground">
-                  {metrics.usage.audioMinutes.toFixed(2)} minutes
+            {metrics.exchanges && metrics.exchanges.length > 0 ? (
+              metrics.exchanges.map((exchange, index) => (
+                <div key={index} className="pb-4 border-b last:border-0">
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="text-xs text-muted-foreground">
+                      Exchange {index + 1}
+                    </div>
+                    <div className="text-xs font-semibold text-primary">
+                      {formatLatency(exchange.latency)}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <div className="text-xs font-medium text-muted-foreground mb-1">
+                        You said:
+                      </div>
+                      <div className="text-sm bg-muted p-2 rounded">
+                        {exchange.transcript}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-medium text-muted-foreground mb-1">
+                        AI responded:
+                      </div>
+                      <div className="text-sm bg-primary/10 p-2 rounded">
+                        {exchange.response}
+                      </div>
+                    </div>
+                  </div>
                 </div>
+              ))
+            ) : (
+              <div className="text-sm text-muted-foreground text-center py-4">
+                No exchanges recorded
               </div>
-              <div className="font-semibold">
-                {formatCost(metrics.costs.deepgram)}
-              </div>
-            </div>
-
-            <div className="flex justify-between items-center pb-2 border-b">
-              <div>
-                <div className="font-medium">OpenAI (LLM)</div>
-                <div className="text-sm text-muted-foreground">
-                  {metrics.usage.tokensInput} input + {metrics.usage.tokensOutput}{' '}
-                  output tokens
-                </div>
-              </div>
-              <div className="font-semibold">
-                {formatCost(metrics.costs.openai)}
-              </div>
-            </div>
-
-            <div className="flex justify-between items-center pb-2 border-b">
-              <div>
-                <div className="font-medium">ElevenLabs (TTS)</div>
-                <div className="text-sm text-muted-foreground">
-                  {metrics.usage.characters} characters
-                </div>
-              </div>
-              <div className="font-semibold">
-                {formatCost(metrics.costs.elevenlabs)}
-              </div>
-            </div>
-
-            <div className="flex justify-between items-center pt-2">
-              <div className="text-lg font-bold">Total Cost</div>
-              <div className="text-2xl font-bold text-primary">
-                {formatCost(metrics.costs.total)}
-              </div>
-            </div>
+            )}
           </div>
         </CardContent>
       </Card>
