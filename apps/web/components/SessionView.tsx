@@ -23,48 +23,57 @@ export function SessionView({
   onEndSession,
 }: SessionViewProps) {
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <div className="flex items-center gap-2">
+    <div className="h-full flex flex-col bg-muted/30">
+      {/* Header Section */}
+      <div className="flex-shrink-0 p-6 border-b bg-background">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
               <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
-              Session Active
+              <h2 className="text-lg font-semibold">Session Active</h2>
             </div>
-          </CardTitle>
-          <CardDescription>
-            Speak into your microphone to test the voice pipeline
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Timer maxDuration={maxDuration} isActive={isActive} />
-
-          <div className="flex items-center justify-center py-8">
-            <div className="relative">
-              <div className="w-24 h-24 rounded-full bg-primary/20 flex items-center justify-center">
-                <Mic className="w-12 h-12 text-primary" />
-              </div>
-              <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
-            </div>
+            <p className="text-sm text-muted-foreground">
+              Speak into your microphone to test the voice pipeline
+            </p>
           </div>
-
-          {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
           <Button
             onClick={onEndSession}
             variant="destructive"
-            className="w-full"
+            size="sm"
           >
             End Session
           </Button>
-        </CardContent>
-      </Card>
+        </div>
+        <div className="mt-4">
+          <Timer maxDuration={maxDuration} isActive={isActive} />
+        </div>
+      </div>
 
-      <TranscriptDisplay entries={transcriptEntries} />
+      {/* Microphone Indicator */}
+      <div className="flex-shrink-0 bg-background border-b py-6">
+        <div className="flex items-center justify-center">
+          <div className="relative">
+            <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center">
+              <Mic className="w-10 h-10 text-primary" />
+            </div>
+            <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
+          </div>
+        </div>
+      </div>
+
+      {/* Error Alert */}
+      {error && (
+        <div className="flex-shrink-0 p-4 bg-background border-b">
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        </div>
+      )}
+
+      {/* Transcript Display - Scrollable */}
+      <div className="flex-1 overflow-auto">
+        <TranscriptDisplay entries={transcriptEntries} />
+      </div>
     </div>
   );
 }

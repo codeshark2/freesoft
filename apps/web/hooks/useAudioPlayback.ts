@@ -8,6 +8,7 @@ export function useAudioPlayback() {
   const audioQueueRef = useRef<AudioBuffer[]>([]);
   const isPlayingRef = useRef(false);
   const nextStartTimeRef = useRef(0);
+  const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
 
   const initializeContext = useCallback(() => {
     if (!audioContextRef.current) {
@@ -20,6 +21,7 @@ export function useAudioPlayback() {
     if (!context || audioQueueRef.current.length === 0) {
       isPlayingRef.current = false;
       setIsPlaying(false);
+      currentSourceRef.current = null;
       return;
     }
 
@@ -32,6 +34,7 @@ export function useAudioPlayback() {
     const source = context.createBufferSource();
     source.buffer = buffer;
     source.connect(context.destination);
+    currentSourceRef.current = source;
 
     // Schedule playback
     const startTime = Math.max(context.currentTime, nextStartTimeRef.current);
@@ -42,6 +45,7 @@ export function useAudioPlayback() {
 
     // Play next in queue when this finishes
     source.onended = () => {
+      currentSourceRef.current = null;
       playQueue();
     };
   }, []);
@@ -80,21 +84,40 @@ export function useAudioPlayback() {
     [initializeContext, playQueue]
   );
 
-  const stop = useCallback(() => {
+  const interrupt = useCallback(() => {
+    console.log('[Audio Playback] Interrupting - stopping current audio');
+
+    // Stop current playing source
+    if (currentSourceRef.current) {
+      try {
+        currentSourceRef.current.stop();
+        currentSourceRef.current.disconnect();
+      } catch (e) {
+        // Ignore errors if already stopped
+      }
+      currentSourceRef.current = null;
+    }
+
+    // Clear the queue
     audioQueueRef.current = [];
     isPlayingRef.current = false;
     nextStartTimeRef.current = 0;
     setIsPlaying(false);
+  }, []);
+
+  const stop = useCallback(() => {
+    interrupt();
 
     if (audioContextRef.current) {
       audioContextRef.current.close();
       audioContextRef.current = null;
     }
-  }, []);
+  }, [interrupt]);
 
   return {
     isPlaying,
     playAudio,
     stop,
+    interrupt,
   };
 }

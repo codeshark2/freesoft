@@ -2,6 +2,7 @@
 
 import { SessionMetrics } from '@voice-ai-tester/shared';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Badge } from './ui/badge';
 import { formatLatency, formatCost } from '@/lib/utils';
 
 interface MetricsDashboardProps {
@@ -14,7 +15,7 @@ export function MetricsDashboard({ metrics }: MetricsDashboardProps) {
       <div>
         <h2 className="text-3xl font-bold mb-2">Session Complete</h2>
         <p className="text-muted-foreground">
-          Here are your performance metrics and cost breakdown
+          Here are your performance metrics
         </p>
       </div>
 
@@ -90,20 +91,22 @@ export function MetricsDashboard({ metrics }: MetricsDashboardProps) {
                       {formatLatency(exchange.latency)}
                     </div>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <div>
-                      <div className="text-xs font-medium text-muted-foreground mb-1">
-                        You said:
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge variant="deepgram">STT</Badge>
+                        <span className="text-xs text-muted-foreground">You said:</span>
                       </div>
-                      <div className="text-sm bg-muted p-2 rounded">
+                      <div className="text-sm bg-blue-100 dark:bg-blue-900 p-3 rounded-lg">
                         {exchange.transcript}
                       </div>
                     </div>
                     <div>
-                      <div className="text-xs font-medium text-muted-foreground mb-1">
-                        AI responded:
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge variant="openai">LLM</Badge>
+                        <span className="text-xs text-muted-foreground">AI responded:</span>
                       </div>
-                      <div className="text-sm bg-primary/10 p-2 rounded">
+                      <div className="text-sm bg-green-100 dark:bg-green-900 p-3 rounded-lg">
                         {exchange.response}
                       </div>
                     </div>

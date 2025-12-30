@@ -32,6 +32,7 @@ export class Session extends EventEmitter {
   private systemPrompt: string = '';
   private currentTranscript: string = '';
   private config: any = {};
+  private conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
 
   constructor(ws: WebSocket) {
     super();
@@ -87,7 +88,15 @@ export class Session extends EventEmitter {
     try {
       this.isActive = true;
       this.startTime = Date.now();
-      this.apiKeys = message.payload.apiKeys;
+
+      // Map new API key structure to old structure for backward compatibility
+      const rawApiKeys = message.payload.apiKeys;
+      this.apiKeys = {
+        deepgram: rawApiKeys.stt || rawApiKeys.deepgram,
+        openai: rawApiKeys.llm || rawApiKeys.openai,
+        elevenlabs: rawApiKeys.tts || rawApiKeys.elevenlabs,
+      };
+
       this.systemPrompt = message.payload.systemPrompt;
       this.config = message.payload.config || {};
 
@@ -98,13 +107,14 @@ export class Session extends EventEmitter {
         data: {},
       });
 
-      // Initialize Deepgram
+      // Initialize Deepgram with 48kHz to match browser's native sample rate
+      console.log('[Server] Initializing Deepgram client...');
       this.deepgramClient = createClient(this.apiKeys.deepgram);
       this.deepgramLive = this.deepgramClient.listen.live({
         model: 'nova-2',
         language: 'en-US',
         encoding: 'linear16',
-        sample_rate: 16000,
+        sample_rate: 48000,  // Match browser's native sample rate
         channels: 1,
         smart_format: true,
         interim_results: true,
@@ -114,12 +124,19 @@ export class Session extends EventEmitter {
 
       // Set up Deepgram event listeners
       this.deepgramLive.on(LiveTranscriptionEvents.Open, () => {
-        // Connection established
+        console.log('[Server] Deepgram connection opened successfully');
       });
 
       this.deepgramLive.on(LiveTranscriptionEvents.Transcript, (data: any) => {
         const transcript = data.channel?.alternatives?.[0]?.transcript;
-        if (transcript) {
+        const confidence = data.channel?.alternatives?.[0]?.confidence;
+        console.log('[Server] Deepgram transcript received:', {
+          text: transcript || '(empty)',
+          isFinal: data.is_final,
+          confidence,
+          hasAlternatives: !!data.channel?.alternatives?.length,
+        });
+        if (transcript && transcript.trim()) {
           const isFinal = data.is_final;
           const timestamp = Date.now();
 
@@ -135,6 +152,7 @@ export class Session extends EventEmitter {
             });
           }
 
+          console.log('[Server] Sending transcript to client:', transcript);
           this.send({
             type: isFinal ? 'transcript_final' : 'transcript_partial',
             payload: { text: transcript, isFinal },
@@ -142,6 +160,7 @@ export class Session extends EventEmitter {
           });
 
           if (isFinal) {
+            console.log('[Server] Final transcript received, triggering LLM request');
             this.currentTranscript = transcript;
             this.handleLLMRequest(transcript);
           }
@@ -180,8 +199,11 @@ export class Session extends EventEmitter {
     }
   }
 
+  private audioChunkCount = 0;
+
   private async handleAudioChunk(message: AudioChunkMessage): Promise<void> {
     if (!this.isActive || !this.deepgramLive) {
+      console.log('[Server] Skipping audio chunk - isActive:', this.isActive, 'deepgramLive:', !!this.deepgramLive);
       return;
     }
 
@@ -198,6 +220,20 @@ export class Session extends EventEmitter {
       // Decode base64 audio and send to Deepgram
       const audioBuffer = Buffer.from(message.payload.audio.toString(), 'base64');
       this.deepgramLive.send(audioBuffer);
+
+      this.audioChunkCount++;
+      if (this.audioChunkCount % 100 === 0) {
+        console.log(`[Server] Sent ${this.audioChunkCount} audio chunks to Deepgram (buffer size: ${audioBuffer.length} bytes)`);
+      }
+
+      // Log first chunk details for debugging
+      if (this.audioChunkCount === 1) {
+        console.log('[Server] First audio chunk:', {
+          bufferLength: audioBuffer.length,
+          base64Length: message.payload.audio.toString().length,
+          firstBytes: audioBuffer.slice(0, 10),
+        });
+      }
     } catch (error) {
       console.error('[Audio] Chunk processing error:', error);
     }
@@ -207,6 +243,12 @@ export class Session extends EventEmitter {
     try {
       const llmStartTime = Date.now();
 
+      // Add user message to conversation history
+      this.conversationHistory.push({
+        role: 'user',
+        content: userMessage,
+      });
+
       // Log LLM start
       this.eventLogger.log({
         type: 'llm_start',
@@ -214,12 +256,17 @@ export class Session extends EventEmitter {
         data: { userMessage },
       });
 
+      // Build messages with conversation history
+      const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+        { role: 'system', content: this.systemPrompt },
+        ...this.conversationHistory,
+      ];
+
+      console.log('[Server] Sending to LLM with', this.conversationHistory.length, 'messages in history');
+
       const stream = await this.openaiClient.chat.completions.create({
         model: 'gpt-4o',
-        messages: [
-          { role: 'system', content: this.systemPrompt },
-          { role: 'user', content: userMessage },
-        ],
+        messages,
         stream: true,
       });
 
@@ -254,6 +301,12 @@ export class Session extends EventEmitter {
 
       const llmCompleteTime = Date.now();
 
+      // Add assistant response to conversation history
+      this.conversationHistory.push({
+        role: 'assistant',
+        content: fullResponse,
+      });
+
       // Log LLM completion
       this.eventLogger.log({
         type: 'llm_complete',
@@ -271,6 +324,8 @@ export class Session extends EventEmitter {
         payload: { token: '', isComplete: true },
         timestamp: llmCompleteTime,
       });
+
+      console.log('[Server] LLM complete, generating TTS for:', fullResponse.substring(0, 50) + '...');
 
       // Generate TTS for the response
       await this.handleTTSRequest(fullResponse);

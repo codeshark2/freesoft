@@ -13,6 +13,7 @@ export function useAudioCapture() {
   const startCapture = useCallback(
     async (onAudioData: (data: ArrayBuffer) => void) => {
       try {
+        console.log('[Audio] Requesting microphone access...');
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: {
             channelCount: 1,
@@ -22,30 +23,64 @@ export function useAudioCapture() {
           },
         });
 
+        console.log('[Audio] Microphone access granted, stream active:', stream.active);
         streamRef.current = stream;
 
-        const audioContext = new AudioContext({ sampleRate: 16000 });
+        // Monitor stream status
+        stream.getTracks().forEach((track) => {
+          const settings = track.getSettings();
+          console.log('[Audio] Track:', track.label, 'enabled:', track.enabled, 'muted:', track.muted);
+          console.log('[Audio] Track settings:', settings);
+
+          track.onended = () => {
+            console.error('[Audio] Track ended unexpectedly!');
+            setError('Microphone stopped unexpectedly');
+            setIsCapturing(false);
+          };
+
+          track.onmute = () => {
+            console.warn('[Audio] Track muted!');
+          };
+
+          track.onunmute = () => {
+            console.log('[Audio] Track unmuted');
+          };
+        });
+
+        // Use native sample rate instead of forcing 16000Hz
+        const audioContext = new AudioContext();
         audioContextRef.current = audioContext;
+        console.log('[Audio] AudioContext created, state:', audioContext.state, 'sampleRate:', audioContext.sampleRate);
 
         if (audioContext.state === 'suspended') {
+          console.log('[Audio] Resuming suspended AudioContext...');
           await audioContext.resume();
         }
 
+        console.log('[Audio] Loading audio worklet module...');
         await audioContext.audioWorklet.addModule('/audio-processor.js');
 
         const source = audioContext.createMediaStreamSource(stream);
         sourceRef.current = source;
+        console.log('[Audio] MediaStreamSource created');
 
         const workletNode = new AudioWorkletNode(audioContext, 'audio-capture-processor');
         workletNodeRef.current = workletNode;
+        console.log('[Audio] AudioWorkletNode created');
 
+        let chunkCount = 0;
         workletNode.port.onmessage = (event) => {
+          chunkCount++;
+          if (chunkCount % 50 === 0) {
+            console.log('[Audio] Received', chunkCount, 'audio chunks');
+          }
           onAudioData(event.data);
         };
 
         source.connect(workletNode);
         workletNode.connect(audioContext.destination);
 
+        console.log('[Audio] Audio pipeline connected successfully');
         setIsCapturing(true);
         setError(null);
       } catch (err: any) {

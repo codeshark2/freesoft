@@ -11,14 +11,17 @@ import { AlertCircle } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
 export interface ApiKeys {
-  deepgram: string;
-  openai: string;
-  elevenlabs?: string;
+  stt: string;
+  llm: string;
+  tts?: string;
 }
 
 export interface SessionConfig {
-  ttsProvider: 'openai-tts' | 'elevenlabs';
-  ttsVoice?: string;
+  sttProvider: 'deepgram' | 'assemblyai' | 'google-speech' | 'azure-speech';
+  llmProvider: 'openai' | 'anthropic' | 'google-gemini';
+  llmModel: string;
+  ttsProvider: 'openai-tts' | 'elevenlabs' | 'google-tts';
+  ttsModel?: string;
 }
 
 interface ApiKeyFormProps {
@@ -40,8 +43,11 @@ export function ApiKeyForm({ onStart }: ApiKeyFormProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onStart(apiKeys, systemPrompt, {
+      sttProvider: 'deepgram',
+      llmProvider: 'openai',
+      llmModel: 'gpt-4.1',
       ttsProvider,
-      ttsVoice,
+      ttsModel: 'tts-1',
     });
   };
 
@@ -127,10 +133,10 @@ export function ApiKeyForm({ onStart }: ApiKeyFormProps) {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="openai-tts">
-                      OpenAI TTS (Recommended - $15/1M chars)
+                      OpenAI TTS (Recommended)
                     </SelectItem>
                     <SelectItem value="elevenlabs">
-                      ElevenLabs (Premium quality)
+                      ElevenLabs (High quality)
                     </SelectItem>
                   </SelectContent>
                 </Select>

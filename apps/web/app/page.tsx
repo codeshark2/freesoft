@@ -2,7 +2,9 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { SessionMetrics } from '@voice-ai-tester/shared';
-import { ApiKeyForm, ApiKeys, SessionConfig } from '@/components/ApiKeyForm';
+import { ApiKeys, SessionConfig } from '@/components/ApiKeyForm';
+import { ApiKeyPanel } from '@/components/ApiKeyPanel';
+import { WelcomeView } from '@/components/WelcomeView';
 import { SessionView } from '@/components/SessionView';
 import { MetricsDashboard } from '@/components/MetricsDashboard';
 import { TranscriptEntry } from '@/components/TranscriptDisplay';
@@ -11,10 +13,19 @@ import { useWebSocket } from '@/hooks/useWebSocket';
 import { useAudioCapture } from '@/hooks/useAudioCapture';
 import { useAudioPlayback } from '@/hooks/useAudioPlayback';
 
-type AppState = 'setup' | 'session' | 'results';
+type AppState = 'welcome' | 'session' | 'results';
 
 export default function Home() {
-  const [appState, setAppState] = useState<AppState>('setup');
+  const [appState, setAppState] = useState<AppState>('welcome');
+  const [apiKeys, setApiKeys] = useState<ApiKeys | null>(null);
+  const [systemPrompt, setSystemPrompt] = useState('');
+  const [config, setConfig] = useState<SessionConfig>({
+    sttProvider: 'deepgram',
+    llmProvider: 'openai',
+    llmModel: 'gpt-4.1',
+    ttsProvider: 'openai-tts',
+    ttsModel: 'tts-1'
+  });
   const [maxDuration, setMaxDuration] = useState(60);
   const [transcriptEntries, setTranscriptEntries] = useState<TranscriptEntry[]>(
     []
@@ -43,6 +54,12 @@ export default function Home() {
     });
 
     ws.on('transcript_partial', (message) => {
+      // Interrupt audio playback when user starts speaking
+      if (audioPlayback.isPlaying) {
+        console.log('[Session] User started speaking - interrupting AI audio');
+        audioPlayback.interrupt();
+      }
+
       // Update or add partial transcript
       setTranscriptEntries((prev) => {
         const lastEntry = prev[prev.length - 1];
@@ -160,44 +177,74 @@ export default function Home() {
   }, [ws, audioCapture, audioPlayback, currentAssistantText]);
 
   const handleStartSession = useCallback(
-    async (apiKeys: ApiKeys, systemPrompt: string, config: SessionConfig) => {
+    async (keys: ApiKeys, prompt: string, sessionConfig: SessionConfig) => {
+      console.log('[Session] Starting session with config:', sessionConfig);
+
+      // Save configuration to state
+      setApiKeys(keys);
+      setSystemPrompt(prompt);
+      setConfig(sessionConfig);
       setTranscriptEntries([]);
       setCurrentAssistantText('');
       setError(null);
 
       try {
+        console.log('[Session] Connecting to WebSocket...');
         await Promise.race([
           ws.connect(),
           new Promise<void>((_, reject) =>
             setTimeout(() => reject(new Error('WebSocket connection timeout')), 10000)
           )
         ]);
+
+        console.log('[Session] WebSocket connected, sending start_session message...');
         ws.send({
           type: 'start_session',
           payload: {
-            apiKeys,
-            systemPrompt,
+            apiKeys: keys,
+            systemPrompt: prompt,
             config: {
-              ttsProvider: config.ttsProvider,
-              ttsVoice: config.ttsVoice,
+              sttProvider: sessionConfig.sttProvider,
+              llmProvider: sessionConfig.llmProvider,
+              llmModel: sessionConfig.llmModel,
+              ttsProvider: sessionConfig.ttsProvider,
+              ttsModel: sessionConfig.ttsModel,
             },
           },
           timestamp: Date.now(),
         });
 
+        console.log('[Session] Waiting 500ms for server initialization...');
         await new Promise(resolve => setTimeout(resolve, 500));
 
+        console.log('[Session] Starting audio capture...');
+        let audioChunksSent = 0;
         await audioCapture.startCapture((audioData) => {
+          // Convert ArrayBuffer to base64 (browser-compatible)
+          const uint8Array = new Uint8Array(audioData);
+          let binaryString = '';
+          for (let i = 0; i < uint8Array.length; i++) {
+            binaryString += String.fromCharCode(uint8Array[i]);
+          }
+          const base64Audio = btoa(binaryString);
+
+          audioChunksSent++;
+          if (audioChunksSent % 50 === 0) {
+            console.log('[Session] Sent', audioChunksSent, 'audio chunks to server');
+          }
+
           ws.send({
             type: 'audio_chunk',
             payload: {
-              audio: Buffer.from(audioData).toString('base64'),
+              audio: base64Audio,
             },
             timestamp: Date.now(),
           });
         });
+
+        console.log('[Session] Audio capture started successfully!');
       } catch (error: any) {
-        console.error('Session start error:', error);
+        console.error('[Session] Session start error:', error);
         setError(error.message || 'Failed to connect to server');
       }
     },
@@ -215,7 +262,7 @@ export default function Home() {
   }, [ws, audioCapture, audioPlayback]);
 
   const handleReset = useCallback(() => {
-    setAppState('setup');
+    setAppState('welcome');
     setTranscriptEntries([]);
     setCurrentAssistantText('');
     setMetrics(null);
@@ -224,9 +271,21 @@ export default function Home() {
   }, [ws]);
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-background to-muted/20 py-12 px-4">
-      <div className="container mx-auto">
-        {appState === 'setup' && <ApiKeyForm onStart={handleStartSession} />}
+    <div className="flex h-screen bg-background">
+      {/* Left Sidebar - API Key Panel */}
+      <div className="w-[400px] border-r flex-shrink-0">
+        <ApiKeyPanel
+          apiKeys={apiKeys}
+          systemPrompt={systemPrompt}
+          config={config}
+          isSessionActive={appState === 'session'}
+          onStart={handleStartSession}
+        />
+      </div>
+
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-hidden">
+        {appState === 'welcome' && <WelcomeView />}
 
         {appState === 'session' && (
           <SessionView
@@ -239,14 +298,16 @@ export default function Home() {
         )}
 
         {appState === 'results' && metrics && (
-          <div className="max-w-4xl mx-auto space-y-6">
-            <MetricsDashboard metrics={metrics} />
-            <Button onClick={handleReset} className="w-full" size="lg">
-              Start New Session
-            </Button>
+          <div className="h-full overflow-auto p-12">
+            <div className="max-w-4xl mx-auto space-y-6">
+              <MetricsDashboard metrics={metrics} />
+              <Button onClick={handleReset} className="w-full" size="lg">
+                Start New Session
+              </Button>
+            </div>
           </div>
         )}
       </div>
-    </main>
+    </div>
   );
 }

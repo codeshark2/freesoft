@@ -57,3 +57,78 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  /* Desktop-only warning for small screens */
+  @media (max-width: 1024px) {
+    body::before {
+      content: 'This application is optimized for desktop. Please use a screen width of at least 1024px.';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: hsl(var(--background));
+      color: hsl(var(--foreground));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 2rem;
+      z-index: 9999;
+      font-size: 1.125rem;
+      font-weight: 500;
+    }
+  }
+
+  /* Messaging bubble animations */
+  @keyframes slideInLeft {
+    from {
+      opacity: 0;
+      transform: translateX(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes slideInRight {
+    from {
+      opacity: 0;
+      transform: translateX(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .message-enter-user {
+    animation: slideInLeft 0.2s ease-out;
+  }
+
+  .message-enter-assistant {
+    animation: slideInRight 0.2s ease-out;
+  }
+
+  /* Custom scrollbar styling */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+    border-radius: 4px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 4px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+  }
+}
