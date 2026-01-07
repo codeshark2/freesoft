@@ -1,7 +1,11 @@
+import { Link } from "react-router-dom";
 import { Terminal, Github, Settings, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useVendorConfig } from "@/hooks/useVendorConfig";
 
 const Header = () => {
+  const { configuredCount, totalCount, hasMinimumConfig } = useVendorConfig();
+
   return (
     <header className="border-b border-border bg-card/50 backdrop-blur-sm">
       <div className="container flex h-16 items-center justify-between px-4">
@@ -27,9 +31,19 @@ const Header = () => {
             <Zap className="mr-2 h-4 w-4" />
             Quick Test
           </Button>
-          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary">
-            <Settings className="mr-2 h-4 w-4" />
-            Config
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="text-muted-foreground hover:text-primary relative"
+            asChild
+          >
+            <Link to="/settings">
+              <Settings className="mr-2 h-4 w-4" />
+              Config
+              {!hasMinimumConfig && (
+                <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+              )}
+            </Link>
           </Button>
           <Button 
             variant="outline" 
