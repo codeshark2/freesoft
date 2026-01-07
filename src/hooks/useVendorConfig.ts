@@ -1,31 +1,45 @@
-import { useMemo } from 'react';
-import { vendorRegistry, getVendorsByType } from '@/lib/vendors/registry';
+import { useMemo, useCallback, useSyncExternalStore } from 'react';
+import { vendorRegistry } from '@/lib/vendors/registry';
 import { VendorType, VendorWithStatus } from '@/lib/vendors/types';
+import { isVendorConfigured, getConfiguredVendorIds } from '@/lib/storage/apiKeyStorage';
 
-const checkEnvKey = (key: string): boolean => {
-  const value = import.meta.env[key];
-  return typeof value === 'string' && value.trim().length > 0;
-};
+const STORAGE_KEY = 'voicetest_vendor_configs';
 
-const getVendorStatus = (envKeys: string[]): { isConfigured: boolean; status: 'configured' | 'not_configured' } => {
-  const allConfigured = envKeys.every(checkEnvKey);
-  return {
-    isConfigured: allConfigured,
-    status: allConfigured ? 'configured' : 'not_configured',
+const subscribe = (callback: () => void) => {
+  const handleStorage = (e: StorageEvent) => {
+    if (e.key === STORAGE_KEY) callback();
+  };
+  
+  window.addEventListener('storage', handleStorage);
+  window.addEventListener('vendorConfigChanged', callback);
+  
+  return () => {
+    window.removeEventListener('storage', handleStorage);
+    window.removeEventListener('vendorConfigChanged', callback);
   };
 };
 
+const getSnapshot = () => {
+  return localStorage.getItem(STORAGE_KEY) || '{}';
+};
+
+export const notifyVendorConfigChange = () => {
+  window.dispatchEvent(new Event('vendorConfigChanged'));
+};
+
 export const useVendorConfig = () => {
+  const storageSnapshot = useSyncExternalStore(subscribe, getSnapshot);
+
   const vendors = useMemo((): VendorWithStatus[] => {
     return vendorRegistry.map((vendor) => {
-      const { isConfigured, status } = getVendorStatus(vendor.envKeys);
+      const configured = isVendorConfigured(vendor.id);
       return {
         ...vendor,
-        isConfigured,
-        status,
+        isConfigured: configured,
+        status: configured ? 'configured' : 'not_configured',
       };
     });
-  }, []);
+  }, [storageSnapshot]);
 
   const vendorsByType = useMemo(() => {
     const result: Record<VendorType, VendorWithStatus[]> = {
@@ -33,11 +47,11 @@ export const useVendorConfig = () => {
       LLM: [],
       TTS: [],
     };
-    
+
     vendors.forEach((vendor) => {
       result[vendor.type].push(vendor);
     });
-    
+
     return result;
   }, [vendors]);
 
@@ -52,9 +66,12 @@ export const useVendorConfig = () => {
     return hasASR && hasLLM && hasTTS;
   }, [vendorsByType]);
 
-  const getConfiguredVendorsOfType = (type: VendorType): VendorWithStatus[] => {
-    return vendorsByType[type].filter((v) => v.isConfigured);
-  };
+  const getConfiguredVendorsOfType = useCallback(
+    (type: VendorType): VendorWithStatus[] => {
+      return vendorsByType[type].filter((v) => v.isConfigured);
+    },
+    [vendorsByType]
+  );
 
   return {
     vendors,
