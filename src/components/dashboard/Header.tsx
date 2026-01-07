@@ -1,65 +1,48 @@
-import { Link } from "react-router-dom";
-import { Terminal, Github, Settings, Zap } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { useVendorConfig } from "@/hooks/useVendorConfig";
+import { Link } from 'react-router-dom';
+import { Settings, Github, Radio } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { useVendorConfig } from '@/hooks/useVendorConfig';
 
 const Header = () => {
   const { configuredCount, totalCount, hasMinimumConfig } = useVendorConfig();
 
   return (
-    <header className="border-b border-border bg-card/50 backdrop-blur-sm">
-      <div className="container flex h-16 items-center justify-between px-4">
-        <div className="flex items-center gap-3">
+    <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-40">
+      <div className="container flex h-14 items-center justify-between px-4">
+        {/* Logo */}
+        <Link to="/" className="flex items-center gap-2">
           <div className="relative">
-            <Terminal className="h-8 w-8 text-primary" />
-            <div className="absolute inset-0 animate-pulse-glow">
-              <Terminal className="h-8 w-8 text-primary opacity-50 blur-sm" />
+            <Radio className="h-6 w-6 text-primary" />
+            <div className="absolute inset-0 animate-ping opacity-30">
+              <Radio className="h-6 w-6 text-primary" />
             </div>
           </div>
-          <div>
-            <h1 className="font-display text-xl font-bold tracking-tight">
-              <span className="text-primary glow-text-cyan">Voice</span>
-              <span className="text-foreground">Test</span>
-              <span className="text-secondary glow-text-purple">.ai</span>
-            </h1>
-            <p className="text-xs text-muted-foreground">Open Source Voice AI Testing</p>
-          </div>
-        </div>
+          <span className="font-display font-bold text-lg text-foreground">
+            VoiceTest<span className="text-primary">.ai</span>
+          </span>
+        </Link>
 
+        {/* Navigation */}
         <nav className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary">
-            <Zap className="mr-2 h-4 w-4" />
-            Quick Test
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="text-muted-foreground hover:text-primary relative"
-            asChild
-          >
-            <Link to="/settings">
-              <Settings className="mr-2 h-4 w-4" />
-              Config
-              {!hasMinimumConfig && (
-                <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-              )}
-            </Link>
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="border-border hover:border-primary hover:bg-primary/10"
-            asChild
-          >
-            <a 
-              href="https://github.com/codeshark2/freevoicetesting" 
-              target="_blank" 
-              rel="noopener noreferrer"
-            >
-              <Github className="mr-2 h-4 w-4" />
-              GitHub
-            </a>
-          </Button>
+          <Link to="/settings">
+            <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground">
+              <div className="relative">
+                <Settings className="h-4 w-4" />
+                {!hasMinimumConfig && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
+                )}
+              </div>
+              <span className="hidden sm:inline">Config</span>
+              <span className="text-xs text-muted-foreground">
+                {configuredCount}/{totalCount}
+              </span>
+            </Button>
+          </Link>
+          <a href="https://github.com/codeshark2/freevoicetesting" target="_blank" rel="noopener noreferrer">
+            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
+              <Github className="h-4 w-4" />
+            </Button>
+          </a>
         </nav>
       </div>
     </header>
