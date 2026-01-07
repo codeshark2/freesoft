@@ -18,7 +18,7 @@ const Header = () => {
             </div>
           </div>
           <span className="font-display font-bold text-lg text-foreground">
-            VoiceTest<span className="text-primary">.ai</span>
+            Free<span className="text-primary">Voice</span> Testing
           </span>
         </Link>
 
