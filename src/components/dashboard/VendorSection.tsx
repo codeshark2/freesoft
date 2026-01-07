@@ -1,33 +1,8 @@
 import { useState } from "react";
 import { Mic, Brain, Volume2, Radio, Sparkles, AudioWaveform } from "lucide-react";
 import VendorCard from "./VendorCard";
-
-interface Vendor {
-  id: string;
-  name: string;
-  type: "ASR" | "LLM" | "TTS";
-  status: "online" | "offline" | "pending";
-  latency?: number;
-}
-
-const vendors: Vendor[] = [
-  // ASR Vendors
-  { id: "deepgram", name: "Deepgram", type: "ASR", status: "online", latency: 120 },
-  { id: "assemblyai", name: "AssemblyAI", type: "ASR", status: "online", latency: 150 },
-  { id: "whisper", name: "OpenAI Whisper", type: "ASR", status: "online", latency: 200 },
-  { id: "azure-stt", name: "Azure Speech", type: "ASR", status: "pending" },
-  
-  // LLM Vendors
-  { id: "openai", name: "OpenAI GPT-4", type: "LLM", status: "online", latency: 450 },
-  { id: "claude", name: "Anthropic Claude", type: "LLM", status: "online", latency: 380 },
-  { id: "gemini", name: "Google Gemini", type: "LLM", status: "pending" },
-  
-  // TTS Vendors
-  { id: "elevenlabs", name: "ElevenLabs", type: "TTS", status: "online", latency: 180 },
-  { id: "openai-tts", name: "OpenAI TTS", type: "TTS", status: "online", latency: 220 },
-  { id: "playht", name: "PlayHT", type: "TTS", status: "pending" },
-  { id: "azure-tts", name: "Azure TTS", type: "TTS", status: "offline" },
-];
+import { useVendorConfig } from "@/hooks/useVendorConfig";
+import { VendorType, VendorWithStatus } from "@/lib/vendors/types";
 
 const typeIcons = {
   ASR: Mic,
@@ -35,7 +10,7 @@ const typeIcons = {
   TTS: Volume2,
 };
 
-const sectionConfig = {
+const sectionConfig: Record<VendorType, { title: string; subtitle: string; icon: typeof Radio; gradient: string }> = {
   ASR: {
     title: "Speech Recognition",
     subtitle: "ASR Vendors",
@@ -57,37 +32,63 @@ const sectionConfig = {
 };
 
 const VendorSection = () => {
-  const [selectedVendors, setSelectedVendors] = useState<Record<string, string>>({
-    ASR: "deepgram",
-    LLM: "openai",
-    TTS: "elevenlabs",
+  const { vendorsByType } = useVendorConfig();
+  
+  const [selectedVendors, setSelectedVendors] = useState<Record<VendorType, string | null>>({
+    ASR: null,
+    LLM: null,
+    TTS: null,
   });
 
-  const toggleVendor = (type: "ASR" | "LLM" | "TTS", vendorId: string) => {
+  // Auto-select first configured vendor for each type
+  useState(() => {
+    const newSelections: Record<VendorType, string | null> = { ASR: null, LLM: null, TTS: null };
+    (['ASR', 'LLM', 'TTS'] as VendorType[]).forEach((type) => {
+      const configured = vendorsByType[type].find((v) => v.isConfigured);
+      if (configured) {
+        newSelections[type] = configured.id;
+      }
+    });
+    setSelectedVendors(newSelections);
+  });
+
+  const toggleVendor = (type: VendorType, vendorId: string) => {
     setSelectedVendors(prev => ({
       ...prev,
       [type]: vendorId,
     }));
   };
 
-  const types: Array<"ASR" | "LLM" | "TTS"> = ["ASR", "LLM", "TTS"];
+  const getVendorStatus = (vendor: VendorWithStatus): "online" | "offline" | "pending" | "not_configured" => {
+    if (!vendor.isConfigured) return "not_configured";
+    // For now, configured vendors show as "online" - real status would come from connection tests
+    return "online";
+  };
+
+  const types: VendorType[] = ["ASR", "LLM", "TTS"];
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       {types.map((type) => {
         const config = sectionConfig[type];
         const SectionIcon = config.icon;
-        const typeVendors = vendors.filter(v => v.type === type);
+        const typeVendors = vendorsByType[type];
+        const configuredCount = typeVendors.filter((v) => v.isConfigured).length;
         
         return (
           <div key={type} className="terminal-panel overflow-hidden">
             <div className={`bg-gradient-to-b ${config.gradient} p-4 border-b border-border`}>
-              <div className="flex items-center gap-2">
-                <SectionIcon className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <h2 className="font-display font-semibold text-foreground">{config.title}</h2>
-                  <p className="text-xs text-muted-foreground">{config.subtitle}</p>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <SectionIcon className="h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <h2 className="font-display font-semibold text-foreground">{config.title}</h2>
+                    <p className="text-xs text-muted-foreground">{config.subtitle}</p>
+                  </div>
                 </div>
+                <span className="text-xs text-muted-foreground">
+                  {configuredCount}/{typeVendors.length}
+                </span>
               </div>
             </div>
             
@@ -98,9 +99,10 @@ const VendorSection = () => {
                   name={vendor.name}
                   type={vendor.type}
                   icon={typeIcons[vendor.type]}
-                  status={vendor.status}
-                  latency={vendor.latency}
+                  status={getVendorStatus(vendor)}
                   isSelected={selectedVendors[type] === vendor.id}
+                  isConfigured={vendor.isConfigured}
+                  docsUrl={vendor.docsUrl}
                   onClick={() => toggleVendor(type, vendor.id)}
                 />
               ))}
