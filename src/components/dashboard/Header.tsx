@@ -9,7 +9,6 @@ const Header = () => {
   return (
     <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-40">
       <div className="container flex h-14 items-center justify-between px-4">
-        {/* Logo */}
         <Link to="/" className="flex items-center gap-2">
           <div className="relative">
             <Radio className="h-6 w-6 text-primary" />
@@ -22,7 +21,6 @@ const Header = () => {
           </span>
         </Link>
 
-        {/* Navigation */}
         <nav className="flex items-center gap-2">
           <Link to="/settings">
             <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground">

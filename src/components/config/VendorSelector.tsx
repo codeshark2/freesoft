@@ -54,10 +54,8 @@ export const VendorSelector = ({ selectedVendors, onVendorSelect }: VendorSelect
     const isCurrentlySelected = currentSelection?.vendorId === vendor.id;
 
     if (isCurrentlySelected) {
-      // Toggle expansion for model selection
       setExpandedVendor(expandedVendor === vendor.id ? null : vendor.id);
     } else {
-      // Select this vendor with default model
       const selection = getDefaultSelection(vendor);
       onVendorSelect(vendor.type, selection);
       setExpandedVendor(vendor.id);
@@ -139,7 +137,6 @@ export const VendorSelector = ({ selectedVendors, onVendorSelect }: VendorSelect
                         ) : null}
                       </button>
 
-                      {/* Model Selection Panel */}
                       {isExpanded && currentSelection && (
                         <div className="ml-7 p-3 bg-muted/30 rounded-md border border-border/50">
                           <ModelSelector

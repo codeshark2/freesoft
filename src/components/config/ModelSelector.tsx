@@ -107,7 +107,6 @@ export const ModelSelector = ({ vendor, selection, onSelectionChange, compact = 
 
   return (
     <div className="space-y-4">
-      {/* Model Selection */}
       <div className="space-y-2">
         <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Model</label>
         <Select value={selection.modelId} onValueChange={handleModelChange}>
@@ -150,7 +149,6 @@ export const ModelSelector = ({ vendor, selection, onSelectionChange, compact = 
         )}
       </div>
 
-      {/* Language Selection (ASR only) */}
       {isASR && languages.length > 0 && (
         <div className="space-y-2">
           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Language</label>
@@ -169,7 +167,6 @@ export const ModelSelector = ({ vendor, selection, onSelectionChange, compact = 
         </div>
       )}
 
-      {/* Voice Selection (TTS only) */}
       {isTTS && voices.length > 0 && (
         <div className="space-y-2">
           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Voice</label>
