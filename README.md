@@ -1,51 +1,80 @@
-# AI Dev Hub
+# freevoicetesting
 
-Voice AI Testing Tool for developers
+This repo is a **voice AI testing harness**.
 
-## Project info
+It lets you spin up a real-time voice pipeline (**ASR → LLM → TTS**), try different providers, interrupt it, observe how it behaves, and measure latency — without wiring up a backend or committing to any one vendor.
 
-This project is a voice AI testing tool that allows you to test and interact with various voice AI vendors and models.
+Nothing is “built in.”
+You bring the providers. The system just runs them and shows you what happened.
 
-## Getting Started
+---
 
-### Prerequisites
+## Why this exists
 
-- Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+If you’ve built voice agents before, you know the problem:
 
-### Installation
+Two setups can sound “similar,” but behave very differently once you care about:
 
-```sh
-# Clone the repository
-git clone <YOUR_GIT_URL>
+* time-to-first-sound
+* interruption handling
+* streaming lag
+* vendor quirks
 
-# Navigate to the project directory
-cd <YOUR_PROJECT_NAME>
+Most tools blur execution and intelligence together.
 
-# Install dependencies
-npm i
+This project doesn’t.
+It’s intentionally dumb. It just **executes and observes**.
 
-# Start the development server
+---
+
+## How it works (mentally)
+
+1. You pick ASR, LLM, and TTS in the UI
+2. You add your own API keys (stored locally in the browser)
+3. The system runs a real-time voice interaction
+4. Everything that happens is captured and timed
+5. When the run ends, it’s gone
+
+Each test is meant to be **isolated, repeatable, and disposable**.
+
+---
+
+## Running it locally
+
+No environment setup required.
+
+```bash
+git clone https://github.com/codeshark2/freevoicetesting.git
+cd freevoicetesting
+npm install
 npm run dev
 ```
 
-## Technologies
+Open:
 
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## Development
-
-Run the development server:
-```sh
-npm run dev
+```
+http://localhost:8080
 ```
 
-Build for production:
-```sh
-npm run build
-```
+All configuration (vendors, models, voices, API keys) happens **inside the UI**.
+
+---
+
+## What you can do with it
+
+* Compare ASR / LLM / TTS vendors side-by-side
+* Feel real latency differences (not just see numbers)
+* Test interruption behavior
+* Debug streaming issues visually
+* Experiment with prompts and pipelines before committing to a stack
+
+---
+
+## What this is not
+
+* Not a production voice framework
+* Not a hosted service
+* Not a no-code product
+
+It’s a **developer tool** for people who want to understand how voice systems actually behave.
+
