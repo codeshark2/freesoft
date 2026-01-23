@@ -50,7 +50,7 @@ const Index = () => {
     if (JSON.stringify(newSelection) !== JSON.stringify(selectedVendors)) {
       setSelectedVendors(newSelection);
     }
-  }, [vendorsByType]);
+  }, [vendorsByType, selectedVendors]);
 
   const handleVendorSelect = (type: VendorType, selection: VendorSelection) => {
     setSelectedVendors((prev) => ({ ...prev, [type]: selection }));
@@ -115,8 +115,8 @@ const Index = () => {
               Test Configuration
             </h4>
             <div className="space-y-1 font-mono text-sm">
-              {getConfigSummary().map((line, i) => (
-                <div key={i} className="text-foreground">
+              {getConfigSummary().map((line) => (
+                <div key={line} className="text-foreground">
                   <span className="text-primary">→</span> {line}
                 </div>
               ))}
@@ -126,7 +126,7 @@ const Index = () => {
 
         {/* Test Console */}
         <section className="max-w-2xl mx-auto">
-          <TestConsole />
+          <TestConsole selectedVendors={selectedVendors} />
         </section>
       </main>
 
